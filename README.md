@@ -2,7 +2,7 @@
 
 A secure PHP web application implementing authentication, account protection, and multiple web security mechanisms.
 
-This project was developed as part of a **Computer Security module** and demonstrates the implementation of common **web security protections** including authentication, input validation, attack mitigation, and secure file handling.
+This project was developed as part of a **Computer Security module** and demonstrates the implementation of common **web security protections**, including authentication, input validation, attack mitigation, and secure file handling.
 
 ---
 
@@ -42,24 +42,35 @@ The system implements several important security protections:
 
 ---
 
+## Technologies
+
+- PHP
+- MySQL
+- Composer
+- HTML / CSS
+- JavaScript
+
+---
+
 ## Project Structure
+
+```
 secure-web-application
 │
-├── src # Main PHP application
-│ ├── admin
-│ ├── includes
-│ ├── uploads
-│ ├── login.php
-│ ├── register.php
-│ ├── dashboard.php
-│ └── ...
+├── src                 # Main PHP application
+│   ├── admin
+│   ├── includes
+│   ├── uploads
+│   ├── login.php
+│   ├── register.php
+│   ├── dashboard.php
 │
-├── database # Database schema and updates
-│
-├── report # Security project report
+├── database            # Database schema
+├── report              # Security report
 │
 ├── composer.json
 └── README.md
+```
 
 ---
 
@@ -74,16 +85,19 @@ secure-web-application
 ## Setup
 
 Clone the repository:
-git clone https://github.com/yourusername/secure-web-application.git
+
+git clone https://github.com/Behram484/secure-web-application.git
+
 
 Install dependencies:
 composer install
 
-Configure database credentials inside the configuration file.
+
+Configure database credentials in the configuration file.
 
 Import the SQL schema located in the **database/** directory.
 
-Start a local PHP server or deploy using Apache/Nginx.
+Run the application using a local PHP server or deploy using Apache/Nginx.
 
 ---
 
