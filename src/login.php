@@ -17,6 +17,13 @@ define('LOCKOUT_DURATION', 15 * 60);    // Lockout duration in seconds (15 minut
 define('TWO_FA_CODE_LENGTH', 6);        // 6-digit code
 define('TWO_FA_EXPIRY', 10 * 60);       // Code expires in 10 minutes
 
+// =====================================================
+// Failure message
+// =====================================================
+// One message for every credential failure, so the response is the same
+// whether or not the address belongs to an account.
+define('LOGIN_FAILED_MESSAGE', 'Invalid email or password');
+
 // If already logged in, redirect to dashboard
 if (isset($_SESSION['user_id'])) {
     header('Location: dashboard.php');
@@ -234,16 +241,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $lockoutMessage = "Too many failed login attempts. Your account has been locked for {$lockoutMinutes} minutes.";
                         $errors['lockout'] = $lockoutMessage;
                     } else {
-                        // Show remaining attempts (but don't reveal user exists for security)
-                        $errors['password'] = "Invalid email or password. {$result['attempts_remaining']} attempt(s) remaining before account lockout.";
+                        // The message must not depend on whether the account
+                        // exists. An attempts-remaining counter can only be
+                        // computed for a row that exists, so printing it here
+                        // told an attacker which addresses are registered.
+                        $errors['password'] = LOGIN_FAILED_MESSAGE;
                     }
                 }
             }
         } else {
-            // User doesn't exist - don't reveal this for security
-            // Just show generic error
-            $errors['email'] = 'Invalid email or password';
-            $errors['password'] = 'Invalid email or password';
+            // No such account. Identical wording, and identical placement, to
+            // the wrong-password case above: a second error rendered against
+            // the email field would be a tell in itself.
+            $errors['password'] = LOGIN_FAILED_MESSAGE;
         }
     }
 }
@@ -362,6 +372,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         /* Account Lockout Warning Style */
+        .form-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-left: 4px solid #dc3545;
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin-bottom: 20px;
+            color: #721c24;
+            font-size: 14px;
+        }
         .lockout-warning {
             background: #fff3cd;
             border: 1px solid #ffc107;
@@ -446,6 +466,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <?php echo htmlspecialchars($_SESSION['flash_success']); ?>
             </div>
             <?php unset($_SESSION['flash_success']); ?>
+        <?php endif; ?>
+
+        <?php if (!empty($errors['csrf'])): ?>
+            <div class="form-error">
+                <?php echo htmlspecialchars($errors['csrf']); ?>
+            </div>
         <?php endif; ?>
 
         <?php if (!empty($errors['lockout'])): ?>
