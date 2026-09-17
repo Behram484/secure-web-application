@@ -154,6 +154,9 @@ define('DESC_TRUNCATE_LENGTH', 150);
             color: #888;
         }
 
+        .request-actions {
+            margin-top: 10px;
+        }
         .view-details-link {
             display: inline-block;
             margin-top: 8px;
@@ -264,9 +267,13 @@ define('DESC_TRUNCATE_LENGTH', 150);
                         </div>
                         <div class="request-description">
                             <?php echo nl2br(htmlspecialchars($description)); ?>
-                            <?php if ($isTruncated): ?>
-                                <a href="request_detail.php?id=<?php echo (int)$request['id']; ?>" class="view-details-link">View details</a>
-                            <?php endif; ?>
+                        </div>
+                        <?php // This was the only link to request_detail.php on the page and
+                              // it used to sit inside if ($isTruncated), so a request with a
+                              // description of 150 characters or fewer had no route to its
+                              // own detail page at all - no photo, no status, nothing. ?>
+                        <div class="request-actions">
+                            <a href="request_detail.php?id=<?php echo (int)$request['id']; ?>" class="view-details-link">View details</a>
                         </div>
                         <?php if (!empty($request['photo_path']) && strpos($request['photo_path'], 'uploads/') === 0 && file_exists(__DIR__ . '/' . $request['photo_path'])): ?>
                             <div style="margin-top: 10px;">

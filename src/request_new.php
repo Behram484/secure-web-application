@@ -295,6 +295,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow: 0 8px 18px rgba(102, 126, 234, .35);
         }
 
+        .form-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-left: 4px solid #dc3545;
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin-bottom: 20px;
+            color: #721c24;
+            font-size: 14px;
+        }
         .field-error {
             color: #c33;
             font-size: 13px;
@@ -343,6 +353,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endforeach; ?>
                 </ul>
             </div>
+        <?php endif; ?>
+
+        <?php if (!empty($_SESSION['flash_error'])): ?>
+            <?php // The CSRF branch above sets flash_error and redirects back here,
+                  // but nothing on this page used to render it. The form came back
+                  // empty with no explanation, and the message then surfaced on
+                  // request_list.php instead, out of context. ?>
+            <div class="form-error">
+                <?php echo htmlspecialchars($_SESSION['flash_error']); ?>
+            </div>
+            <?php unset($_SESSION['flash_error']); ?>
         <?php endif; ?>
 
         <form method="POST" action="request_new.php" enctype="multipart/form-data">
