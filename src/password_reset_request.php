@@ -5,6 +5,45 @@ require __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/mailer.php';
 require __DIR__ . '/includes/csrf.php';
 
+/**
+ * The question list offered at registration, in registration order.
+ */
+function securityQuestionChoices() {
+    return [
+        'What was the name of your first pet?',
+        'What city were you born in?',
+        "What was your mother's maiden name?",
+        'What was the name of your elementary school?',
+        'What is your favorite movie?',
+        'What was your childhood nickname?',
+        'What is the name of your best friend?',
+        'What was your favorite food as a child?',
+    ];
+}
+
+/**
+ * A stand-in security question for an address that has no account, or an
+ * account with no question set.
+ *
+ * This flow used to answer "does this address have an account?" for anyone who
+ * asked: a registered address advanced to the security question, an
+ * unregistered one was refused with "Invalid email or account not found.". The
+ * question shown is the whole point of the step, so the step itself was the
+ * oracle and no rewording could close it.
+ *
+ * Every address now advances, and one with no account is given a question
+ * chosen by hashing the address. Deterministic, so the same address always
+ * gets the same question and repeat probing looks identical; the answer is
+ * never accepted, and the refusal is worded exactly as a wrong answer against
+ * a real account.
+ */
+function decoySecurityQuestion($email) {
+    $choices = securityQuestionChoices();
+    $digest = hash('sha256', strtolower(trim($email)));
+    $index = hexdec(substr($digest, 0, 8)) % count($choices);
+    return $choices[$index];
+}
+
 $errors = [];
 $successMessage = '';
 $resetLink = '';
@@ -35,27 +74,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 1) {
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Security: don't reveal if email exists, but if user exists and has security question, proceed
-        if ($user && !empty($user['security_question'])) {
-            // Store in session for step 2
-            $_SESSION['reset_step'] = 2;
-            $_SESSION['reset_email'] = $email;
-            $_SESSION['reset_user_id'] = $user['id'];
-            $step = 2;
-            $userEmail = $email;
-            $securityQuestion = $user['security_question'];
-        } elseif ($user && empty($user['security_question'])) {
-            // User exists but no security question set (old account)
-            $errors['email'] = 'This account does not have a security question set. Please contact support.';
-        } else {
-            // User doesn't exist - don't reveal this, but show generic error
-            $errors['email'] = 'Invalid email or account not found.';
-        }
+        // Every address advances to step two, whether or not it has an
+        // account. An account with no security question set is treated the
+        // same way as one that does not exist, because "this account has no
+        // security question" gives the game away just as plainly.
+        $isRealAccount = $user && !empty($user['security_question']);
+
+        $_SESSION['reset_step']     = 2;
+        $_SESSION['reset_email']    = $email;
+        $_SESSION['reset_user_id']  = $isRealAccount ? $user['id'] : null;
+        $_SESSION['reset_decoy']    = $isRealAccount ? 0 : 1;
+        $_SESSION['reset_question'] = $isRealAccount
+                ? $user['security_question']
+                : decoySecurityQuestion($email);
+
+        $step = 2;
+        $userEmail = $email;
+        $securityQuestion = $_SESSION['reset_question'];
     }
 }
 
 // Handle step 2: Security answer verification
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
+//
+// elseif, not if. As two separate if blocks the first one set $step = 2 and
+// then this one ran inside the same request with an empty security answer, so
+// submitting a valid email address returned the security question and
+// "Security answer is required" together - a validation failure for a field
+// the user had not been shown yet.
+elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
     // CSRF Protection
     if (!verifyCSRFToken()) {
         $errors['csrf'] = 'Invalid security token. Please try again.';
@@ -65,15 +111,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
     $userId = isset($_SESSION['reset_user_id']) ? $_SESSION['reset_user_id'] : null;
     $securityAnswer = isset($_POST['security_answer']) ? trim($_POST['security_answer']) : '';
 
+    $isDecoy = !empty($_SESSION['reset_decoy']);
+
     if (empty($errors)) {
         if ($securityAnswer === '') {
             $errors['security_answer'] = 'Security answer is required';
+            $securityQuestion = isset($_SESSION['reset_question'])
+                    ? $_SESSION['reset_question'] : '';
+        } elseif ($isDecoy) {
+            // No account behind this address. Refuse in exactly the words a
+            // real account uses for a wrong answer, and leave the wizard on
+            // step two, so the shape of the response matches as well as the
+            // wording.
+            $errors['security_answer'] = 'Incorrect security answer. Please try again.';
+            $securityQuestion = isset($_SESSION['reset_question'])
+                    ? $_SESSION['reset_question'] : '';
         } elseif ($userId === null || $email === '') {
             $errors['security_answer'] = 'Session expired. Please start over.';
             // Clear session
             unset($_SESSION['reset_step']);
             unset($_SESSION['reset_email']);
             unset($_SESSION['reset_user_id']);
+            unset($_SESSION['reset_decoy']);
+            unset($_SESSION['reset_question']);
             $step = 1;
         } else {
             // Get user's security answer hash
@@ -119,6 +179,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
                     unset($_SESSION['reset_step']);
                     unset($_SESSION['reset_email']);
                     unset($_SESSION['reset_user_id']);
+                    unset($_SESSION['reset_decoy']);
+                    unset($_SESSION['reset_question']);
 
                     // Show success message
                     if ($emailSent) {
@@ -138,24 +200,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
                 unset($_SESSION['reset_step']);
                 unset($_SESSION['reset_email']);
                 unset($_SESSION['reset_user_id']);
+                unset($_SESSION['reset_decoy']);
+                unset($_SESSION['reset_question']);
                 $step = 1;
             }
         }
     }
 }
 
-// If step 2, get security question from database
-if ($step === 2 && !empty($userEmail)) {
-    $stmt = $pdo->prepare('SELECT security_question FROM users WHERE email = ? LIMIT 1');
-    $stmt->execute([$userEmail]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($user && !empty($user['security_question'])) {
-        $securityQuestion = $user['security_question'];
+// If step 2, take the question from the session rather than re-reading the
+// database. Looking it up again here would drop a decoy back to step one and
+// reintroduce exactly the difference in behaviour this is meant to remove.
+if ($step === 2 && empty($securityQuestion)) {
+    if (!empty($_SESSION['reset_question'])) {
+        $securityQuestion = $_SESSION['reset_question'];
     } else {
-        // Security question not found, reset to step 1
         unset($_SESSION['reset_step']);
         unset($_SESSION['reset_email']);
         unset($_SESSION['reset_user_id']);
+        unset($_SESSION['reset_decoy']);
+        unset($_SESSION['reset_question']);
         $step = 1;
     }
 }
@@ -165,6 +229,8 @@ if (isset($_GET['reset']) && $_GET['reset'] === '1') {
     unset($_SESSION['reset_step']);
     unset($_SESSION['reset_email']);
     unset($_SESSION['reset_user_id']);
+    unset($_SESSION['reset_decoy']);
+    unset($_SESSION['reset_question']);
     $step = 1;
     $userEmail = '';
     $securityQuestion = '';
